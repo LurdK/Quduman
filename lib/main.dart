@@ -14,20 +14,24 @@ void main() async {
   // Check if opened from Home Screen Widget
   final launchedFromWidget = await HomeWidget.initiallyLaunchedFromHomeWidget();
   final savedVerseId = await WidgetService.getSavedVerseIndex();
+  final savedEdition = await WidgetService.getSavedEdition();
 
   runApp(QudumanApp(
     initialVerseId: savedVerseId,
+    initialEditionId: savedEdition,
     launchedDirectlyToReader: launchedFromWidget != null,
   ));
 }
 
 class QudumanApp extends StatelessWidget {
   final int initialVerseId;
+  final String initialEditionId;
   final bool launchedDirectlyToReader;
 
   const QudumanApp({
     super.key,
     required this.initialVerseId,
+    required this.initialEditionId,
     required this.launchedDirectlyToReader,
   });
 
@@ -42,15 +46,27 @@ class QudumanApp extends StatelessWidget {
         brightness: Brightness.light,
         colorSchemeSeed: const Color(0xFF1B4332), // Deep Quranic Forest Green
         fontFamily: 'Roboto',
+        appBarTheme: const AppBarTheme(
+          scrolledUnderElevation: 0,
+          elevation: 0,
+        ),
       ),
       darkTheme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
         colorSchemeSeed: const Color(0xFF2D6A4F),
         scaffoldBackgroundColor: const Color(0xFF121413),
+        appBarTheme: const AppBarTheme(
+          scrolledUnderElevation: 0,
+          elevation: 0,
+          backgroundColor: Color(0xFF121413),
+        ),
       ),
       home: launchedDirectlyToReader
-          ? ReaderScreen(initialVerseId: initialVerseId)
+          ? ReaderScreen(
+              initialVerseId: initialVerseId,
+              initialEditionId: initialEditionId,
+            )
           : const StartingVerseScreen(),
     );
   }

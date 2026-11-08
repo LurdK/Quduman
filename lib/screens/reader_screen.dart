@@ -1,19 +1,21 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
+import '../models/translation_edition.dart';
 import '../models/verse.dart';
 import '../services/audio_service.dart';
 import '../services/database_service.dart';
 import '../services/widget_service.dart';
+import '../widgets/translation_selector_sheet.dart';
 
 class ReaderScreen extends StatefulWidget {
   final int initialVerseId;
-  final bool initialUseMalay;
+  final String initialEditionId;
 
   const ReaderScreen({
     super.key,
     required this.initialVerseId,
-    this.initialUseMalay = false,
+    this.initialEditionId = 'en.sahih',
   });
 
   @override
@@ -30,7 +32,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
   List<AcousticSegment> _acousticSegments = [];
   int _activeWordIndex = -1;
   bool _isLoading = true;
-  bool _useMalay = false;
+  String _selectedEdition = 'en.sahih';
+  String _translationText = '';
+  String _editionAuthor = '';
 
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<PlayerState>? _playerStateSub;
@@ -38,7 +42,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   @override
   void initState() {
     super.initState();
-    _useMalay = widget.initialUseMalay;
+    _selectedEdition = widget.initialEditionId;
     _loadVerse(widget.initialVerseId);
     _setupAudioListeners();
   }
@@ -130,12 +134,30 @@ class _ReaderScreenState extends State<ReaderScreen> {
       );
     }
 
+    // Fetch translation for active edition
+    final trans = await _db.getVerseTranslation(verseId, editionId: _selectedEdition);
+
+    if (_editionAuthor.isEmpty) {
+      final downloaded = await _db.getDownloadedEditions();
+      final active = downloaded.firstWhere(
+        (e) => e.identifier == _selectedEdition,
+        orElse: () => downloaded.isNotEmpty ? downloaded.first : const TranslationEdition(
+          identifier: 'en.sahih',
+          languageCode: 'en',
+          name: 'Saheeh International',
+          englishName: 'Saheeh International',
+        ),
+      );
+      _editionAuthor = active.englishName;
+    }
+
     if (!mounted) return;
 
     setState(() {
       _currentVerse = verse;
       _displayTokens = tokens;
       _acousticSegments = acousticSegments;
+      _translationText = trans;
       _activeWordIndex = -1;
       _isLoading = false;
     });
@@ -146,7 +168,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
 
     // Sync active verse with Android home screen widget
-    await WidgetService.updateActiveVerse(verse, useMalay: _useMalay);
+    await WidgetService.updateActiveVerse(
+      verse,
+      translation: trans,
+      selectedEdition: _selectedEdition,
+    );
 
     // Pre-fetch next verse's audio in background for zero-buffer playback on Next
     final nextId = (verse.id % 6236) + 1;
@@ -189,9 +215,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
 
     final verse = _currentVerse!;
-    final translation = _useMalay && verse.translationMs.isNotEmpty
-        ? verse.translationMs
-        : verse.translationEn;
 
     // Adaptive Typography calculation based on word count
     final wordCount = _displayTokens.length;
@@ -202,6 +225,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        scrolledUnderElevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           tooltip: 'Back to Selector',
@@ -211,11 +235,33 @@ class _ReaderScreenState extends State<ReaderScreen> {
         centerTitle: true,
         actions: [
           IconButton(
-            tooltip: _useMalay ? 'Switch to English' : 'Switch to Malay',
-            icon: Icon(_useMalay ? Icons.translate : Icons.language),
+            tooltip: 'Translations Library',
+            icon: const Icon(Icons.translate_rounded),
             onPressed: () {
-              setState(() => _useMalay = !_useMalay);
-              WidgetService.updateActiveVerse(verse, useMalay: _useMalay);
+              TranslationSelectorSheet.show(
+                context,
+                activeEditionId: _selectedEdition,
+                onEditionSelected: (edition) async {
+                  setState(() {
+                    _selectedEdition = edition.identifier;
+                    _editionAuthor = edition.englishName;
+                  });
+                  if (_currentVerse != null) {
+                    final updatedTrans = await _db.getVerseTranslation(
+                      _currentVerse!.id,
+                      editionId: _selectedEdition,
+                    );
+                    if (mounted) {
+                      setState(() => _translationText = updatedTrans);
+                    }
+                    await WidgetService.updateActiveVerse(
+                      _currentVerse!,
+                      translation: updatedTrans,
+                      selectedEdition: _selectedEdition,
+                    );
+                  }
+                },
+              );
             },
           ),
         ],
@@ -302,7 +348,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
                     // Translation with Adaptive Typography
                     Text(
-                      _useMalay ? 'Terjemahan (Basmeih):' : 'Translation (Saheeh International):',
+                      _editionAuthor.isNotEmpty
+                          ? 'Translation ($_editionAuthor):'
+                          : 'Translation:',
                       style: theme.textTheme.labelLarge?.copyWith(
                         color: theme.colorScheme.primary,
                         fontWeight: FontWeight.bold,
@@ -310,7 +358,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      translation,
+                      _translationText.isNotEmpty ? _translationText : verse.translationEn,
                       style: TextStyle(
                         fontSize: translationFontSize,
                         height: translationLineHeight,
@@ -322,9 +370,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
               ),
             ),
 
-            // Bottom Mini Audio Player Bar (Previous, Play/Pause, Replay, Next)
+            // Bottom Mini Audio Player Bar (Grouped [Back, Play/Pause, Forward] + Replay on Right)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
+              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
               decoration: BoxDecoration(
                 color: theme.colorScheme.surface,
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
@@ -337,55 +385,72 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 ],
               ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  // 1. Previous Verse
-                  IconButton.filledTonal(
-                    tooltip: 'Previous Ayah',
-                    iconSize: 26,
-                    icon: const Icon(Icons.skip_previous_rounded),
-                    onPressed: _goToPreviousVerse,
+                  // Left / Main Group: [⏮ Previous, ▶/⏸ Play/Pause, ⏭ Next] in one cohesive pill container
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // 1. Previous Ayah
+                        IconButton(
+                          tooltip: 'Previous Ayah',
+                          iconSize: 26,
+                          icon: const Icon(Icons.skip_previous_rounded),
+                          onPressed: _goToPreviousVerse,
+                        ),
+                        const SizedBox(width: 4),
+
+                        // 2. Play / Pause Toggle
+                        StreamBuilder<PlayerState>(
+                          stream: _audio.playerStateStream,
+                          builder: (context, snapshot) {
+                            final isPlaying = snapshot.data?.playing ?? false;
+
+                            return IconButton.filled(
+                              tooltip: isPlaying ? 'Pause' : 'Play Recitation',
+                              iconSize: 32,
+                              padding: const EdgeInsets.all(10),
+                              icon: Icon(isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded),
+                              onPressed: () {
+                                if (isPlaying) {
+                                  _audio.pause();
+                                } else {
+                                  _audio.play();
+                                }
+                              },
+                            );
+                          },
+                        ),
+                        const SizedBox(width: 4),
+
+                        // 3. Next Ayah
+                        IconButton(
+                          tooltip: 'Next Ayah',
+                          iconSize: 26,
+                          icon: const Icon(Icons.skip_next_rounded),
+                          onPressed: _advanceToNextVerse,
+                        ),
+                      ],
+                    ),
                   ),
 
-                  // 2. Audio Play / Pause Toggle
-                  StreamBuilder<PlayerState>(
-                    stream: _audio.playerStateStream,
-                    builder: (context, snapshot) {
-                      final isPlaying = snapshot.data?.playing ?? false;
+                  const Spacer(),
 
-                      return IconButton.filled(
-                        tooltip: isPlaying ? 'Pause' : 'Play Recitation',
-                        iconSize: 34,
-                        padding: const EdgeInsets.all(12),
-                        icon: Icon(isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded),
-                        onPressed: () {
-                          if (isPlaying) {
-                            _audio.pause();
-                          } else {
-                            _audio.play();
-                          }
-                        },
-                      );
-                    },
-                  ),
-
-                  // 3. Reset / Replay Current Verse
+                  // Right / Auxiliary Action: Replay Button
                   IconButton.filledTonal(
                     tooltip: 'Replay from start',
-                    iconSize: 26,
+                    iconSize: 24,
+                    padding: const EdgeInsets.all(12),
                     icon: const Icon(Icons.replay_rounded),
                     onPressed: () {
                       _audio.seek(Duration.zero);
                       _audio.play();
                     },
-                  ),
-
-                  // 4. Next Verse
-                  IconButton.filledTonal(
-                    tooltip: 'Next Ayah',
-                    iconSize: 26,
-                    icon: const Icon(Icons.skip_next_rounded),
-                    onPressed: _advanceToNextVerse,
                   ),
                 ],
               ),

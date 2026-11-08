@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import '../models/translation_edition.dart';
 import '../models/verse.dart';
 import '../services/database_service.dart';
 import '../services/widget_service.dart';
+import '../widgets/translation_selector_sheet.dart';
 import 'about_screen.dart';
 import 'reader_screen.dart';
 
@@ -21,7 +23,8 @@ class _StartingVerseScreenState extends State<StartingVerseScreen> {
   int _selectedAyah = 1;
   int _maxAyahs = 7;
   bool _isLoading = true;
-  bool _useMalay = false;
+  String _selectedEdition = 'en.sahih';
+  TranslationEdition? _activeEdition;
 
   @override
   void initState() {
@@ -32,7 +35,7 @@ class _StartingVerseScreenState extends State<StartingVerseScreen> {
   Future<void> _loadInitialData() async {
     final surahs = await _db.getAllSurahs();
     final savedIndex = await WidgetService.getSavedVerseIndex();
-    final savedLang = await WidgetService.getSavedLanguage();
+    final savedEdition = await WidgetService.getSavedEdition();
     final currentVerse = await _db.getVerseById(savedIndex) ?? await _db.getVerseById(1);
 
     int initialSurah = 1;
@@ -44,12 +47,27 @@ class _StartingVerseScreenState extends State<StartingVerseScreen> {
 
     final maxAyahs = await _db.getMaxAyahsForSurah(initialSurah);
 
+    final downloadedEditions = await _db.getDownloadedEditions();
+    final activeEd = downloadedEditions.firstWhere(
+      (e) => e.identifier == savedEdition,
+      orElse: () => downloadedEditions.firstWhere(
+        (e) => e.identifier == 'en.sahih',
+        orElse: () => const TranslationEdition(
+          identifier: 'en.sahih',
+          languageCode: 'en',
+          name: 'Saheeh International',
+          englishName: 'Saheeh International',
+        ),
+      ),
+    );
+
     setState(() {
       _surahs = surahs;
       _selectedSurah = initialSurah;
       _selectedAyah = initialAyah;
       _maxAyahs = maxAyahs;
-      _useMalay = savedLang == 'ms';
+      _selectedEdition = activeEd.identifier;
+      _activeEdition = activeEd;
       _isLoading = false;
     });
   }
@@ -70,7 +88,12 @@ class _StartingVerseScreenState extends State<StartingVerseScreen> {
     final verse = await _db.getVerseBySurahAndAyah(_selectedSurah, _selectedAyah);
     if (verse == null) return;
 
-    await WidgetService.updateActiveVerse(verse, useMalay: _useMalay);
+    final trans = await _db.getVerseTranslation(verse.id, editionId: _selectedEdition);
+    await WidgetService.updateActiveVerse(
+      verse,
+      translation: trans,
+      selectedEdition: _selectedEdition,
+    );
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -86,13 +109,21 @@ class _StartingVerseScreenState extends State<StartingVerseScreen> {
     final verse = await _db.getVerseBySurahAndAyah(_selectedSurah, _selectedAyah);
     if (verse == null) return;
 
-    await WidgetService.updateActiveVerse(verse, useMalay: _useMalay);
+    final trans = await _db.getVerseTranslation(verse.id, editionId: _selectedEdition);
+    await WidgetService.updateActiveVerse(
+      verse,
+      translation: trans,
+      selectedEdition: _selectedEdition,
+    );
 
     if (!mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => ReaderScreen(initialVerseId: verse.id, initialUseMalay: _useMalay),
+        builder: (_) => ReaderScreen(
+          initialVerseId: verse.id,
+          initialEditionId: _selectedEdition,
+        ),
       ),
     ).then((_) => _loadInitialData());
   }
@@ -198,16 +229,59 @@ class _StartingVerseScreenState extends State<StartingVerseScreen> {
 
           const SizedBox(height: 20),
 
-          // Language toggle
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Malay Translation (Basmeih)'),
-            subtitle: const Text('Default is English (Saheeh International)'),
-            value: _useMalay,
-            onChanged: (val) {
-              setState(() => _useMalay = val);
-              _setActiveVerseOnly();
-            },
+          // Translation Selector Card
+          Container(
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: theme.colorScheme.outlineVariant.withValues(alpha: 0.5),
+              ),
+            ),
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              leading: Container(
+                width: 44,
+                height: 44,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  _activeEdition?.languageCode.toUpperCase() ?? 'EN',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+              ),
+              title: Text(
+                _activeEdition?.englishName ?? 'Saheeh International',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: Text(
+                '${_activeEdition?.name ?? "English"} • Tap to switch or download',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+              onTap: () {
+                TranslationSelectorSheet.show(
+                  context,
+                  activeEditionId: _selectedEdition,
+                  onEditionSelected: (edition) async {
+                    setState(() {
+                      _selectedEdition = edition.identifier;
+                      _activeEdition = edition;
+                    });
+                    _setActiveVerseOnly();
+                  },
+                );
+              },
+            ),
           ),
 
           const SizedBox(height: 24),
@@ -260,11 +334,10 @@ class _StartingVerseScreenState extends State<StartingVerseScreen> {
       appBar: AppBar(
         title: Text(_currentIndex == 0
             ? 'Quduman • قدوما'
-            : _currentIndex == 1
-                ? 'Reading Mode'
-                : 'About'),
+            : 'About Quduman'),
         centerTitle: true,
         elevation: 0,
+        scrolledUnderElevation: 0,
       ),
       body: SafeArea(
         child: IndexedStack(

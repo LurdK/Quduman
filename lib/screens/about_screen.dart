@@ -7,17 +7,11 @@ class AboutScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('About Quduman'),
-        centerTitle: true,
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
               // Header Hero
               Center(
                 child: Column(
@@ -248,9 +242,7 @@ class AboutScreen extends StatelessWidget {
               const SizedBox(height: 16),
             ],
           ),
-        ),
-      ),
-    );
+        );
   }
 
   Widget _buildSectionCard(

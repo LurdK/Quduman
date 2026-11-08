@@ -28,6 +28,7 @@ class QuranGlanceWidgetReceiver : GlanceAppWidgetReceiver() {
         val ayahNumber = prefs.getInt("ayah_number", 1)
         val verseArabic = prefs.getString("verse_arabic", "") ?: ""
         val verseTranslation = prefs.getString("verse_translation", "") ?: ""
+        val editionId = prefs.getString("selected_edition", "en.sahih") ?: "en.sahih"
         val lang = prefs.getString("selected_language", "en") ?: "en"
 
         MainScope().launch {
@@ -41,6 +42,7 @@ class QuranGlanceWidgetReceiver : GlanceAppWidgetReceiver() {
                         glancePrefs[intPreferencesKey("ayah_number")] = ayahNumber
                         glancePrefs[stringPreferencesKey("verse_arabic")] = verseArabic
                         glancePrefs[stringPreferencesKey("verse_translation")] = verseTranslation
+                        glancePrefs[stringPreferencesKey("selected_edition")] = editionId
                         glancePrefs[stringPreferencesKey("selected_language")] = lang
                         glancePrefs[booleanPreferencesKey("is_audio_playing")] = false
                     }

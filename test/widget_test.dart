@@ -15,6 +15,7 @@ void main() {
     // Build our app and trigger a frame.
     await tester.pumpWidget(const QudumanApp(
       initialVerseId: 1,
+      initialEditionId: 'en.sahih',
       launchedDirectlyToReader: false,
     ));
 

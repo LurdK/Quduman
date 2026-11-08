@@ -29,8 +29,8 @@ class NextVerseActionCallback : ActionCallback {
         // Global index progression: (current % 6236) + 1
         val nextIndex = (currentIndex % 6236) + 1
 
-        val lang = prefs.getString("selected_language", "en") ?: "en"
-        val isMalay = lang == "ms"
+        val editionId = prefs.getString("selected_edition", "en.sahih") ?: "en.sahih"
+        val lang = prefs.getString("selected_language", editionId.substringBefore(".")) ?: "en"
 
         val dbFile = context.getDatabasePath("quran.db")
 
@@ -74,7 +74,22 @@ class NextVerseActionCallback : ActionCallback {
                     val translationEn = cursor.getString(3) ?: ""
                     val translationMs = cursor.getString(4) ?: ""
 
-                    translation = if (isMalay && translationMs.isNotEmpty()) translationMs else translationEn
+                    // Query translations table for active edition
+                    val transCursor = try {
+                        db.rawQuery(
+                            "SELECT translation_text FROM translations WHERE edition_id = ? AND verse_id = ?",
+                            arrayOf(editionId, nextIndex.toString())
+                        )
+                    } catch (_: Exception) { null }
+
+                    if (transCursor != null && transCursor.moveToFirst()) {
+                        translation = transCursor.getString(0) ?: ""
+                        transCursor.close()
+                    } else {
+                        transCursor?.close()
+                        val isMalay = editionId.startsWith("ms")
+                        translation = if (isMalay && translationMs.isNotEmpty()) translationMs else translationEn
+                    }
 
                     // Keep SharedPreferences updated for the Flutter app
                     prefs.edit()
@@ -83,6 +98,7 @@ class NextVerseActionCallback : ActionCallback {
                         .putInt("ayah_number", ayahNumber)
                         .putString("verse_arabic", textArabic)
                         .putString("verse_translation", translation)
+                        .putString("selected_edition", editionId)
                         .putString("selected_language", lang)
                         .commit()
                 }
@@ -100,6 +116,7 @@ class NextVerseActionCallback : ActionCallback {
             glancePrefs[intPreferencesKey("ayah_number")] = ayahNumber
             glancePrefs[stringPreferencesKey("verse_arabic")] = textArabic
             glancePrefs[stringPreferencesKey("verse_translation")] = translation
+            glancePrefs[stringPreferencesKey("selected_edition")] = editionId
             glancePrefs[stringPreferencesKey("selected_language")] = lang
             glancePrefs[booleanPreferencesKey("is_audio_playing")] = false
         }
