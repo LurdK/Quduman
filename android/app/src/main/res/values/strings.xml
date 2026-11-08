@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Quduman</string>
+    <string name="widget_name">Daily Quran Ayah</string>
+    <string name="widget_description">Displays the active daily Quran verse with in-place progression.</string>
+</resources>
+
