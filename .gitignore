@@ -46,3 +46,10 @@ migrate_working_dir/
 *.p12
 *.mobileprovision
 key.properties
+
+# Project Specific & Developer Tools (Keep Local Only)
+GEMINI.md
+scripts/
+node_modules/
+package-lock.json
+*.tmp
