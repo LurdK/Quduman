@@ -10,33 +10,33 @@
 
 ---
 
-## ✨ Features
+## Features
 
-- **📱 Interactive Android Home Screen Widget:**
+- **Interactive Android Home Screen Widget:**
   - Built natively with **Jetpack Glance** (Compose for AppWidgets).
   - Displays the active verse directly on your launcher with Arabic Uthmani text, Surah/Ayah badges, and translation.
   - **In-Place `[Next →]` Button:** Advance to the next verse directly from your home screen without opening the app.
   - **Deep-Link to App:** Tap any part of the verse to open the reader directly.
   - Forward-only cadence designed for daily progression across all 6,236 verses.
 
-- **📖 Distraction-Free Verse Reader:**
+- **Distraction-Free Verse Reader:**
   - **Uthmani Script:** Clean Quranic typography using bundled `Amiri Quran` font with complete tashkeel.
   - **Dual Translations:** English (Saheeh International) and Malay (Abdullah Muhammad Basmeih).
   - **Dynamic Verse Statistics:** Real-time character, word, and letter counts.
 
-- **🎙️ Word-by-Word Audio Synchronization:**
+- **Word-by-Word Audio Synchronization:**
   - Clear, deliberate recitation by Sheikh Mahmoud Khalil Al-Husary (`Husary_128kbps` via EveryAyah CDN).
   - Real-time karaoke-style word highlighting synchronized with precise audio timestamps.
   - Interactive audio scrubber slider with formatted timestamps (`00:00 / 00:00`).
   - Optional **Autoplay** mode for seamless listening when browsing verses.
 
-- **🗃️ 100% Offline Database:**
+- **100% Offline Database:**
   - Pre-bundled SQLite database (`quran.db`) containing all 6,236 verses.
   - Zero server dependency, zero tracking, zero ads.
 
 ---
 
-## 📥 Download Standalone APK
+## Download Standalone APK
 
 You can download and install the ready-to-run `.apk` directly from the [GitHub Releases](../../releases) section:
 
@@ -47,7 +47,7 @@ You can download and install the ready-to-run `.apk` directly from the [GitHub R
 
 ---
 
-## 🛠️ Architecture & Tech Stack
+## Architecture & Tech Stack
 
 ```text
 ┌────────────────────────────────────────────────────────┐
@@ -89,7 +89,7 @@ You can download and install the ready-to-run `.apk` directly from the [GitHub R
 
 ---
 
-## 🚀 Building from Source
+## Building from Source
 
 ### Prerequisites
 - [Flutter SDK](https://docs.flutter.dev/get-started/install) (3.38+ recommended)
@@ -99,8 +99,8 @@ You can download and install the ready-to-run `.apk` directly from the [GitHub R
 ### Steps
 ```bash
 # Clone the repository
-git clone https://github.com/<your-username>/quduman.git
-cd quduman
+git clone https://github.com/LurdK/Quduman.git
+cd Quduman
 
 # Fetch dependencies
 flutter pub get
@@ -116,11 +116,11 @@ The compiled standalone APK will be generated at:
 
 ---
 
-## 📜 License
+## License
 
 This project is open source and available under the [MIT License](LICENSE).
 
-- **Code:** Copyright © 2026 Muhammad Syakil bin Mohd Zaidi. Licensed under the [MIT License](LICENSE).
+- **Code:** Copyright (c) 2026 Muhammad Syakil bin Mohd Zaidi. Licensed under the [MIT License](LICENSE).
 - **Typography:** The `Amiri Quran` font is licensed under the [SIL Open Font License (OFL)](http://scripts.sil.org/OFL).
 - **Quranic Data & Translations:** Tanzil Uthmani text and verified translations (Saheeh International & Abdullah Muhammad Basmeih) are sourced for open scholarly and educational contemplation.
 - **Audio Recitations:** Audio streams provided by [EveryAyah](https://everyayah.com) (Sheikh Mahmoud Khalil Al-Husary).
