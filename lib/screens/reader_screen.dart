@@ -31,13 +31,21 @@ class _ReaderScreenState extends State<ReaderScreen> {
   List<String> _displayTokens = [];
   List<AcousticSegment> _acousticSegments = [];
   int _activeWordIndex = -1;
-  bool _isLoading = true;
+  bool _isInitialLoading = true;
+  bool _isPageLoading = false;
   String _selectedEdition = 'en.sahih';
   String _translationText = '';
   String _editionAuthor = '';
 
+  Duration _currentPosition = Duration.zero;
+  Duration _totalDuration = Duration.zero;
+  bool _isSeeking = false;
+  double _dragValue = 0.0;
+  bool _autoPlay = false;
+
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<PlayerState>? _playerStateSub;
+  StreamSubscription<Duration?>? _durationSub;
 
   @override
   void initState() {
@@ -49,6 +57,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   void _setupAudioListeners() {
     _positionSub = _audio.positionStream.listen((position) {
+      if (!_isSeeking && mounted) {
+        setState(() => _currentPosition = position);
+      }
       if (_displayTokens.isEmpty) return;
       final currentMs = position.inMilliseconds;
 
@@ -84,13 +95,29 @@ class _ReaderScreenState extends State<ReaderScreen> {
       }
     });
 
-    _playerStateSub = _audio.playerStateStream.listen((state) {
+    _durationSub = _audio.durationStream.listen((duration) {
+      if (mounted) {
+        setState(() => _totalDuration = duration ?? Duration.zero);
+      }
+    });
+
+    _playerStateSub = _audio.playerStateStream.listen((state) async {
       if (state.processingState == ProcessingState.completed) {
+        await _audio.pauseAndReset();
         if (mounted) {
-          setState(() => _activeWordIndex = -1);
+          setState(() {
+            _activeWordIndex = -1;
+            _currentPosition = Duration.zero;
+          });
         }
       }
     });
+  }
+
+  String _formatDuration(Duration d) {
+    final minutes = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
   }
 
   List<String> _tokenizeArabic(String text) {
@@ -111,11 +138,23 @@ class _ReaderScreenState extends State<ReaderScreen> {
   }
 
   Future<void> _loadVerse(int verseId) async {
-    setState(() => _isLoading = true);
+    if (_currentVerse == null) {
+      setState(() => _isInitialLoading = true);
+    } else {
+      setState(() => _isPageLoading = true);
+    }
     await _audio.stop();
 
     final verse = await _db.getVerseById(verseId);
-    if (verse == null) return;
+    if (verse == null) {
+      if (mounted) {
+        setState(() {
+          _isInitialLoading = false;
+          _isPageLoading = false;
+        });
+      }
+      return;
+    }
 
     final tokens = _tokenizeArabic(verse.textArabic);
     final duration = await _audio.loadVerse(verse);
@@ -159,7 +198,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
       _acousticSegments = acousticSegments;
       _translationText = trans;
       _activeWordIndex = -1;
-      _isLoading = false;
+      _currentPosition = Duration.zero;
+      _totalDuration = duration ?? Duration.zero;
+      _isInitialLoading = false;
+      _isPageLoading = false;
     });
 
     // Reset scroll position to top
@@ -187,18 +229,25 @@ class _ReaderScreenState extends State<ReaderScreen> {
     if (_currentVerse == null) return;
     final nextId = (_currentVerse!.id % 6236) + 1;
     await _loadVerse(nextId);
+    if (_autoPlay) {
+      await _audio.play();
+    }
   }
 
   Future<void> _goToPreviousVerse() async {
     if (_currentVerse == null) return;
     final prevId = (_currentVerse!.id - 2 + 6236) % 6236 + 1;
     await _loadVerse(prevId);
+    if (_autoPlay) {
+      await _audio.play();
+    }
   }
 
   @override
   void dispose() {
     _positionSub?.cancel();
     _playerStateSub?.cancel();
+    _durationSub?.cancel();
     _audio.stop();
     _scrollController.dispose();
     super.dispose();
@@ -208,7 +257,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    if (_isLoading || _currentVerse == null) {
+    if (_isInitialLoading || _currentVerse == null) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
@@ -271,12 +320,14 @@ class _ReaderScreenState extends State<ReaderScreen> {
           children: [
             // Scrollable Verse Reader Body with auto-scroll support
             Expanded(
-              child: SingleChildScrollView(
-                controller: _scrollController,
-                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
+              child: _isPageLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : SingleChildScrollView(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
                     // Surah & Ayah Badge
                     Center(
                       child: Container(
@@ -370,9 +421,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
               ),
             ),
 
-            // Bottom Mini Audio Player Bar (Grouped [Back, Play/Pause, Forward] + Replay on Right)
+            // Bottom Mini Audio Player Bar with Audio Scrubber + Centered Controls
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+              padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 12.0),
               decoration: BoxDecoration(
                 color: theme.colorScheme.surface,
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
@@ -384,73 +435,191 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   ),
                 ],
               ),
-              child: Row(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Left / Main Group: [⏮ Previous, ▶/⏸ Play/Pause, ⏭ Next] in one cohesive pill container
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-                      borderRadius: BorderRadius.circular(30),
-                    ),
+                  // 1. Interactive Audio Scrubber Progress Line
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4.0),
                     child: Row(
-                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        // 1. Previous Ayah
-                        IconButton(
-                          tooltip: 'Previous Ayah',
-                          iconSize: 26,
-                          icon: const Icon(Icons.skip_previous_rounded),
-                          onPressed: _goToPreviousVerse,
+                        Text(
+                          _formatDuration(_isSeeking
+                              ? Duration(milliseconds: _dragValue.round())
+                              : _currentPosition),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontSize: 11,
+                            color: theme.colorScheme.onSurfaceVariant,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
                         ),
-                        const SizedBox(width: 4),
-
-                        // 2. Play / Pause Toggle
-                        StreamBuilder<PlayerState>(
-                          stream: _audio.playerStateStream,
-                          builder: (context, snapshot) {
-                            final isPlaying = snapshot.data?.playing ?? false;
-
-                            return IconButton.filled(
-                              tooltip: isPlaying ? 'Pause' : 'Play Recitation',
-                              iconSize: 32,
-                              padding: const EdgeInsets.all(10),
-                              icon: Icon(isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded),
-                              onPressed: () {
-                                if (isPlaying) {
-                                  _audio.pause();
-                                } else {
-                                  _audio.play();
-                                }
+                        Expanded(
+                          child: SliderTheme(
+                            data: SliderTheme.of(context).copyWith(
+                              trackHeight: 3.0,
+                              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                              overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                              activeTrackColor: theme.colorScheme.primary,
+                              inactiveTrackColor: theme.colorScheme.surfaceContainerHighest,
+                              thumbColor: theme.colorScheme.primary,
+                            ),
+                            child: Slider(
+                              min: 0.0,
+                              max: _totalDuration.inMilliseconds > 0
+                                  ? _totalDuration.inMilliseconds.toDouble()
+                                  : 1.0,
+                              value: (_isSeeking
+                                      ? _dragValue
+                                      : _currentPosition.inMilliseconds.toDouble())
+                                  .clamp(
+                                0.0,
+                                _totalDuration.inMilliseconds > 0
+                                    ? _totalDuration.inMilliseconds.toDouble()
+                                    : 1.0,
+                              ),
+                              onChangeStart: (val) {
+                                _isSeeking = true;
+                                _dragValue = val;
                               },
-                            );
-                          },
+                              onChanged: _totalDuration.inMilliseconds > 0
+                                  ? (val) {
+                                      setState(() => _dragValue = val);
+                                    }
+                                  : null,
+                              onChangeEnd: _totalDuration.inMilliseconds > 0
+                                  ? (val) async {
+                                      final target = Duration(milliseconds: val.round());
+                                      await _audio.seek(target);
+                                      if (mounted) {
+                                        setState(() {
+                                          _currentPosition = target;
+                                          _isSeeking = false;
+                                        });
+                                      }
+                                    }
+                                  : null,
+                            ),
+                          ),
                         ),
-                        const SizedBox(width: 4),
-
-                        // 3. Next Ayah
-                        IconButton(
-                          tooltip: 'Next Ayah',
-                          iconSize: 26,
-                          icon: const Icon(Icons.skip_next_rounded),
-                          onPressed: _advanceToNextVerse,
+                        Text(
+                          _formatDuration(_totalDuration),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontSize: 11,
+                            color: theme.colorScheme.onSurfaceVariant,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
                         ),
                       ],
                     ),
                   ),
 
-                  const Spacer(),
+                  // 2. Control Buttons Bar: Centered Playback Group + Autoplay Toggle Button on Right
+                  SizedBox(
+                    height: 54,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        // Centered Playback Group [⏮ Previous, ▶/⏸ Play/Pause, ⏭ Next]
+                        Center(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // 1. Previous Ayah
+                                IconButton(
+                                  tooltip: 'Previous Ayah',
+                                  iconSize: 26,
+                                  icon: const Icon(Icons.skip_previous_rounded),
+                                  onPressed: _goToPreviousVerse,
+                                ),
+                                const SizedBox(width: 8),
 
-                  // Right / Auxiliary Action: Replay Button
-                  IconButton.filledTonal(
-                    tooltip: 'Replay from start',
-                    iconSize: 24,
-                    padding: const EdgeInsets.all(12),
-                    icon: const Icon(Icons.replay_rounded),
-                    onPressed: () {
-                      _audio.seek(Duration.zero);
-                      _audio.play();
-                    },
+                                // 2. Play / Pause Toggle
+                                StreamBuilder<PlayerState>(
+                                  stream: _audio.playerStateStream,
+                                  builder: (context, snapshot) {
+                                    final isPlaying = snapshot.data?.playing ?? false;
+
+                                    return IconButton.filled(
+                                      tooltip: isPlaying ? 'Pause' : 'Play Recitation',
+                                      iconSize: 32,
+                                      padding: const EdgeInsets.all(10),
+                                      icon: isPlaying
+                                          ? const Icon(Icons.pause_rounded)
+                                          : Transform.translate(
+                                              offset: const Offset(1.5, -1.5),
+                                              child: const Icon(Icons.play_arrow_rounded),
+                                            ),
+                                      onPressed: () async {
+                                        if (isPlaying) {
+                                          await _audio.pause();
+                                        } else {
+                                          if (_currentPosition >= _totalDuration && _totalDuration > Duration.zero) {
+                                            await _audio.seek(Duration.zero);
+                                            if (mounted) {
+                                              setState(() => _currentPosition = Duration.zero);
+                                            }
+                                          }
+                                          await _audio.play();
+                                        }
+                                      },
+                                    );
+                                  },
+                                ),
+                                const SizedBox(width: 8),
+
+                                // 3. Next Ayah
+                                IconButton(
+                                  tooltip: 'Next Ayah',
+                                  iconSize: 26,
+                                  icon: const Icon(Icons.skip_next_rounded),
+                                  onPressed: _advanceToNextVerse,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        // Autoplay Circle Button on Right
+                        Positioned(
+                          right: 0,
+                          child: IconButton.filledTonal(
+                            tooltip: _autoPlay ? 'Autoplay on navigation: ON' : 'Autoplay on navigation: OFF',
+                            iconSize: 22,
+                            padding: const EdgeInsets.all(10),
+                            style: IconButton.styleFrom(
+                              backgroundColor: _autoPlay
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                              foregroundColor: _autoPlay
+                                  ? theme.colorScheme.onPrimary
+                                  : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                            ),
+                            icon: Icon(_autoPlay ? Icons.auto_mode_rounded : Icons.auto_mode_outlined),
+                            onPressed: () {
+                              setState(() => _autoPlay = !_autoPlay);
+                              ScaffoldMessenger.of(context).clearSnackBars();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    _autoPlay
+                                        ? 'Autoplay ON: Verses will play automatically when navigating'
+                                        : 'Autoplay OFF',
+                                  ),
+                                  duration: const Duration(seconds: 1),
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),

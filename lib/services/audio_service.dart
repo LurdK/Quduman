@@ -88,11 +88,20 @@ class AudioService {
   }
 
   Future<void> play() async {
+    if (_player.processingState == ProcessingState.completed ||
+        (_player.duration != null && _player.position >= _player.duration!)) {
+      await _player.seek(Duration.zero);
+    }
     await _player.play();
   }
 
   Future<void> pause() async {
     await _player.pause();
+  }
+
+  Future<void> pauseAndReset() async {
+    await _player.pause();
+    await _player.seek(Duration.zero);
   }
 
   Future<void> seek(Duration position) async {

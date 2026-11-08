@@ -63,14 +63,15 @@ class QuranGlanceWidget : GlanceAppWidget() {
                         .background(Color(0xFF13221C))
                         .cornerRadius(20.dp)
                         .padding(14.dp)
-                        .clickable(actionStartActivity<MainActivity>())
                 ) {
                     Column(
                         modifier = GlanceModifier.fillMaxSize()
                     ) {
-                        // Header Row
+                        // Header Row (Clickable to open app)
                         Row(
-                            modifier = GlanceModifier.fillMaxWidth(),
+                            modifier = GlanceModifier
+                                .fillMaxWidth()
+                                .clickable(actionStartActivity<MainActivity>()),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(

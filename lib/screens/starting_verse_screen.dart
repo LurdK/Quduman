@@ -82,9 +82,10 @@ class _StartingVerseScreenState extends State<StartingVerseScreen> {
         _selectedAyah = 1;
       }
     });
+    await _syncActiveVerse();
   }
 
-  Future<void> _setActiveVerseOnly() async {
+  Future<void> _syncActiveVerse({bool notify = false}) async {
     final verse = await _db.getVerseBySurahAndAyah(_selectedSurah, _selectedAyah);
     if (verse == null) return;
 
@@ -95,14 +96,15 @@ class _StartingVerseScreenState extends State<StartingVerseScreen> {
       selectedEdition: _selectedEdition,
     );
 
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Active verse set to ${verse.surahNameEn} ${verse.surahNumber}:${verse.ayahNumber}'),
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    if (notify && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Active verse set to ${verse.surahNameEn} ${verse.surahNumber}:${verse.ayahNumber}'),
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   Future<void> _enterReadingMode() async {
@@ -220,8 +222,11 @@ class _StartingVerseScreenState extends State<StartingVerseScreen> {
                     child: Text('Ayah $ayahNum'),
                   );
                 }).toList(),
-                onChanged: (val) {
-                  if (val != null) setState(() => _selectedAyah = val);
+                onChanged: (val) async {
+                  if (val != null) {
+                    setState(() => _selectedAyah = val);
+                    await _syncActiveVerse();
+                  }
                 },
               ),
             ),
@@ -277,31 +282,16 @@ class _StartingVerseScreenState extends State<StartingVerseScreen> {
                       _selectedEdition = edition.identifier;
                       _activeEdition = edition;
                     });
-                    _setActiveVerseOnly();
+                    await _syncActiveVerse();
                   },
                 );
               },
             ),
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 28),
 
-          // Action 1: Set Active Verse Button
-          OutlinedButton.icon(
-            onPressed: _setActiveVerseOnly,
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            icon: const Icon(Icons.bookmark_added_rounded),
-            label: const Text(
-              'Set as Active Verse',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          // Action 2: Enter Reading Mode Button
+          // Primary Action: Enter Reading Mode Button
           FilledButton.icon(
             onPressed: _enterReadingMode,
             style: FilledButton.styleFrom(
@@ -312,6 +302,15 @@ class _StartingVerseScreenState extends State<StartingVerseScreen> {
             label: const Text(
               'Enter Reading Mode',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Center(
+            child: Text(
+              'Home screen widget automatically synchronizes to this verse',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+              ),
             ),
           ),
           const SizedBox(height: 16),
