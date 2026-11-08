@@ -117,4 +117,10 @@ The compiled standalone APK will be generated at:
 ---
 
 ## 📜 License
-Distributed for personal contemplation and study. Quranic text and translations sourced from Tanzil.net and verified open datasets.
+
+This project is open source and available under the [MIT License](LICENSE).
+
+- **Code:** Copyright © 2026 Muhammad Syakil bin Mohd Zaidi. Licensed under the [MIT License](LICENSE).
+- **Typography:** The `Amiri Quran` font is licensed under the [SIL Open Font License (OFL)](http://scripts.sil.org/OFL).
+- **Quranic Data & Translations:** Tanzil Uthmani text and verified translations (Saheeh International & Abdullah Muhammad Basmeih) are sourced for open scholarly and educational contemplation.
+- **Audio Recitations:** Audio streams provided by [EveryAyah](https://everyayah.com) (Sheikh Mahmoud Khalil Al-Husary).
