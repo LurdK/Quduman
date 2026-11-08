@@ -1,4 +1,7 @@
+import 'dart:io';
 import 'package:just_audio/just_audio.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import '../models/verse.dart';
 
 class AudioService {
@@ -19,15 +22,69 @@ class AudioService {
     _currentReciter = reciter;
   }
 
+  Future<File> _getLocalAudioFile(int surah, int ayah, String reciter) async {
+    final tempDir = await getTemporaryDirectory();
+    final audioDir = Directory(p.join(tempDir.path, 'audio', reciter));
+    if (!audioDir.existsSync()) {
+      await audioDir.create(recursive: true);
+    }
+    final s = surah.toString().padLeft(3, '0');
+    final a = ayah.toString().padLeft(3, '0');
+    return File(p.join(audioDir.path, '$s$a.mp3'));
+  }
+
   Future<Duration?> loadVerse(Verse verse) async {
     final url = verse.getAudioUrl(reciter: _currentReciter);
+    final file = await _getLocalAudioFile(verse.surahNumber, verse.ayahNumber, _currentReciter);
+
     try {
-      final duration = await _player.setUrl(url);
-      return duration;
+      if (await file.exists() && await file.length() > 0) {
+        // Play directly from persistent local disk cache
+        return await _player.setFilePath(file.path);
+      } else {
+        // Stream while saving to cache for offline replay
+        final duration = await _player.setUrl(url);
+        _cacheAudioFile(url, file);
+        return duration;
+      }
     } catch (e) {
-      // In case of network error, return null
+      // Offline fallback: check if file was partially cached
+      if (await file.exists() && await file.length() > 0) {
+        try {
+          return await _player.setFilePath(file.path);
+        } catch (_) {}
+      }
       return null;
     }
+  }
+
+  void _cacheAudioFile(String url, File destFile) {
+    Future(() async {
+      try {
+        final client = HttpClient();
+        final request = await client.getUrl(Uri.parse(url));
+        final response = await request.close();
+        if (response.statusCode == 200) {
+          final tempFile = File('${destFile.path}.tmp');
+          final sink = tempFile.openWrite();
+          await response.pipe(sink);
+          if (await tempFile.exists() && await tempFile.length() > 0) {
+            await tempFile.rename(destFile.path);
+          }
+        }
+      } catch (_) {}
+    });
+  }
+
+  /// Silently pre-fetches the audio of a verse in the background
+  Future<void> prefetchVerse(Verse verse) async {
+    try {
+      final file = await _getLocalAudioFile(verse.surahNumber, verse.ayahNumber, _currentReciter);
+      if (!await file.exists() || await file.length() == 0) {
+        final url = verse.getAudioUrl(reciter: _currentReciter);
+        _cacheAudioFile(url, file);
+      }
+    } catch (_) {}
   }
 
   Future<void> play() async {

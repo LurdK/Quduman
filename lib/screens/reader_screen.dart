@@ -23,6 +23,7 @@ class ReaderScreen extends StatefulWidget {
 class _ReaderScreenState extends State<ReaderScreen> {
   final DatabaseService _db = DatabaseService.instance;
   final AudioService _audio = AudioService.instance;
+  final ScrollController _scrollController = ScrollController();
 
   Verse? _currentVerse;
   List<String> _displayTokens = [];
@@ -61,6 +62,20 @@ class _ReaderScreenState extends State<ReaderScreen> {
         }
         if (matchedIndex != _activeWordIndex && mounted) {
           setState(() => _activeWordIndex = matchedIndex);
+
+          // Auto-scroll follow-along for longer verses
+          if (_displayTokens.length > 25 && _scrollController.hasClients) {
+            final progress = matchedIndex / _displayTokens.length;
+            final maxScroll = _scrollController.position.maxScrollExtent;
+            final targetScroll = progress * maxScroll;
+            if ((targetScroll - _scrollController.offset).abs() > 40) {
+              _scrollController.animateTo(
+                targetScroll,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut,
+              );
+            }
+          }
         }
       }
     });
@@ -125,8 +140,21 @@ class _ReaderScreenState extends State<ReaderScreen> {
       _isLoading = false;
     });
 
+    // Reset scroll position to top
+    if (_scrollController.hasClients) {
+      _scrollController.jumpTo(0);
+    }
+
     // Sync active verse with Android home screen widget
     await WidgetService.updateActiveVerse(verse, useMalay: _useMalay);
+
+    // Pre-fetch next verse's audio in background for zero-buffer playback on Next
+    final nextId = (verse.id % 6236) + 1;
+    _db.getVerseById(nextId).then((nextVerse) {
+      if (nextVerse != null) {
+        _audio.prefetchVerse(nextVerse);
+      }
+    });
   }
 
   Future<void> _advanceToNextVerse() async {
@@ -135,11 +163,18 @@ class _ReaderScreenState extends State<ReaderScreen> {
     await _loadVerse(nextId);
   }
 
+  Future<void> _goToPreviousVerse() async {
+    if (_currentVerse == null) return;
+    final prevId = (_currentVerse!.id - 2 + 6236) % 6236 + 1;
+    await _loadVerse(prevId);
+  }
+
   @override
   void dispose() {
     _positionSub?.cancel();
     _playerStateSub?.cancel();
     _audio.stop();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -157,6 +192,13 @@ class _ReaderScreenState extends State<ReaderScreen> {
     final translation = _useMalay && verse.translationMs.isNotEmpty
         ? verse.translationMs
         : verse.translationEn;
+
+    // Adaptive Typography calculation based on word count
+    final wordCount = _displayTokens.length;
+    final arabicFontSize = (34.0 - (wordCount * 0.12)).clamp(19.0, 34.0);
+    final arabicLineHeight = (2.3 - (wordCount * 0.0035)).clamp(1.85, 2.3);
+    final translationFontSize = (17.5 - (wordCount * 0.035)).clamp(13.5, 17.5);
+    final translationLineHeight = (1.6 - (wordCount * 0.0015)).clamp(1.4, 1.6);
 
     return Scaffold(
       appBar: AppBar(
@@ -181,9 +223,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Scrollable Verse Reader Body
+            // Scrollable Verse Reader Body with auto-scroll support
             Expanded(
               child: SingleChildScrollView(
+                controller: _scrollController,
                 padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -223,7 +266,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                       const SizedBox(height: 16),
                     ],
 
-                    // Arabic Text with Word-by-Word Acoustic Karaoke Highlighting
+                    // Arabic Text with Word-by-Word Acoustic Karaoke Highlighting & Adaptive Sizing
                     Directionality(
                       textDirection: TextDirection.rtl,
                       child: RichText(
@@ -237,8 +280,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
                               text: '$text ',
                               style: TextStyle(
                                 fontFamily: 'AmiriQuran',
-                                fontSize: 28,
-                                height: 2.2,
+                                fontSize: arabicFontSize,
+                                height: arabicLineHeight,
                                 fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
                                 color: isActive
                                     ? Colors.amber
@@ -257,7 +300,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                     const Divider(),
                     const SizedBox(height: 20),
 
-                    // Translation
+                    // Translation with Adaptive Typography
                     Text(
                       _useMalay ? 'Terjemahan (Basmeih):' : 'Translation (Saheeh International):',
                       style: theme.textTheme.labelLarge?.copyWith(
@@ -268,8 +311,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
                     const SizedBox(height: 8),
                     Text(
                       translation,
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        height: 1.6,
+                      style: TextStyle(
+                        fontSize: translationFontSize,
+                        height: translationLineHeight,
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
@@ -278,30 +322,41 @@ class _ReaderScreenState extends State<ReaderScreen> {
               ),
             ),
 
-            // Bottom Audio & Action Bar
+            // Bottom Mini Audio Player Bar (Previous, Play/Pause, Replay, Next)
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 14.0),
+              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
               decoration: BoxDecoration(
                 color: theme.colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.08),
-                    blurRadius: 10,
-                    offset: const Offset(0, -3),
+                    blurRadius: 12,
+                    offset: const Offset(0, -4),
                   ),
                 ],
               ),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  // Audio Play / Pause
+                  // 1. Previous Verse
+                  IconButton.filledTonal(
+                    tooltip: 'Previous Ayah',
+                    iconSize: 26,
+                    icon: const Icon(Icons.skip_previous_rounded),
+                    onPressed: _goToPreviousVerse,
+                  ),
+
+                  // 2. Audio Play / Pause Toggle
                   StreamBuilder<PlayerState>(
                     stream: _audio.playerStateStream,
                     builder: (context, snapshot) {
-                      final playerState = snapshot.data;
-                      final isPlaying = playerState?.playing ?? false;
+                      final isPlaying = snapshot.data?.playing ?? false;
 
                       return IconButton.filled(
-                        iconSize: 28,
+                        tooltip: isPlaying ? 'Pause' : 'Play Recitation',
+                        iconSize: 34,
+                        padding: const EdgeInsets.all(12),
                         icon: Icon(isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded),
                         onPressed: () {
                           if (isPlaying) {
@@ -313,10 +368,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
                       );
                     },
                   ),
-                  const SizedBox(width: 8),
 
-                  // Stop / Replay
+                  // 3. Reset / Replay Current Verse
                   IconButton.filledTonal(
+                    tooltip: 'Replay from start',
+                    iconSize: 26,
                     icon: const Icon(Icons.replay_rounded),
                     onPressed: () {
                       _audio.seek(Duration.zero);
@@ -324,20 +380,12 @@ class _ReaderScreenState extends State<ReaderScreen> {
                     },
                   ),
 
-                  const Spacer(),
-
-                  // Forward-Only [Next Ayah ->] Button (No Back Button)
-                  FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
+                  // 4. Next Verse
+                  IconButton.filledTonal(
+                    tooltip: 'Next Ayah',
+                    iconSize: 26,
+                    icon: const Icon(Icons.skip_next_rounded),
                     onPressed: _advanceToNextVerse,
-                    icon: const Icon(Icons.arrow_forward_rounded, size: 20),
-                    label: const Text(
-                      'Next Ayah →',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
                   ),
                 ],
               ),

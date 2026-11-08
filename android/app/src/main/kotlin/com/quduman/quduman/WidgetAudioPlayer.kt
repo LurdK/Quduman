@@ -9,6 +9,9 @@ import androidx.glance.appwidget.state.updateAppWidgetState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.io.File
+import java.io.FileOutputStream
+import java.net.URL
 
 object WidgetAudioPlayer {
     private var mediaPlayer: MediaPlayer? = null
@@ -22,11 +25,11 @@ object WidgetAudioPlayer {
             val s = String.format("%03d", surah)
             val a = String.format("%03d", ayah)
             val url = "https://everyayah.com/data/Husary_128kbps/$s$a.mp3"
-            play(context, url, glanceId)
+            play(context, url, surah, ayah, glanceId)
         }
     }
 
-    private fun play(context: Context, url: String, glanceId: GlanceId) {
+    private fun play(context: Context, url: String, surah: Int, ayah: Int, glanceId: GlanceId) {
         stop(context, glanceId)
 
         try {
@@ -39,7 +42,36 @@ object WidgetAudioPlayer {
                     .setUsage(AudioAttributes.USAGE_MEDIA)
                     .build()
             )
-            player.setDataSource(url)
+
+            // Check shared persistent local cache folder
+            val s = String.format("%03d", surah)
+            val a = String.format("%03d", ayah)
+            val audioDir = File(context.cacheDir, "audio/Husary_128kbps")
+            val localFile = File(audioDir, "$s$a.mp3")
+
+            if (localFile.exists() && localFile.length() > 0) {
+                // Play directly from persistent local disk cache
+                player.setDataSource(localFile.absolutePath)
+            } else {
+                // Stream from URL
+                player.setDataSource(url)
+                // Cache to disk in background for future offline use
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        audioDir.mkdirs()
+                        val tempFile = File(audioDir, "$s$a.mp3.tmp")
+                        URL(url).openStream().use { input ->
+                            FileOutputStream(tempFile).use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                        if (tempFile.exists() && tempFile.length() > 0) {
+                            tempFile.renameTo(localFile)
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+
             player.setOnPreparedListener { mp ->
                 mp.start()
                 isAudioPlaying = true

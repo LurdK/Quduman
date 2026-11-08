@@ -94,22 +94,44 @@ class QuranGlanceWidget : GlanceAppWidget() {
 
                         Spacer(modifier = GlanceModifier.height(8.dp))
 
-                        // Verse Body (Scrollable for longer verses)
+                        // Adaptive Typography based on verse length
+                        val wordCount = verseArabic.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }.size
+                        val arabicFontSize = when {
+                            wordCount <= 10 -> 22.sp
+                            wordCount <= 35 -> 17.sp
+                            wordCount <= 70 -> 14.5.sp
+                            else -> 12.5.sp
+                        }
+                        val translationFontSize = when {
+                            wordCount <= 10 -> 13.5.sp
+                            wordCount <= 35 -> 12.sp
+                            wordCount <= 70 -> 11.sp
+                            else -> 10.sp
+                        }
+
+                        // Verse Body (Scrollable for longer verses, clickable to deep-link to Reading Mode)
                         LazyColumn(
                             modifier = GlanceModifier.defaultWeight().fillMaxWidth()
                         ) {
                             item {
-                                Column(modifier = GlanceModifier.fillMaxWidth()) {
+                                Column(
+                                    modifier = GlanceModifier
+                                        .fillMaxWidth()
+                                        .clickable(actionStartActivity<MainActivity>())
+                                ) {
                                     // Arabic Text
                                     Text(
                                         text = verseArabic,
                                         style = TextStyle(
                                             color = ColorProvider(Color(0xFFFFFFFF)),
-                                            fontSize = 18.sp,
+                                            fontSize = arabicFontSize,
                                             fontWeight = FontWeight.Medium,
                                             textAlign = TextAlign.End
                                         ),
-                                        modifier = GlanceModifier.fillMaxWidth().padding(vertical = 4.dp)
+                                        modifier = GlanceModifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp)
+                                            .clickable(actionStartActivity<MainActivity>())
                                     )
 
                                     Spacer(modifier = GlanceModifier.height(6.dp))
@@ -119,9 +141,11 @@ class QuranGlanceWidget : GlanceAppWidget() {
                                         text = verseTranslation,
                                         style = TextStyle(
                                             color = ColorProvider(Color(0xFF94A3B8)),
-                                            fontSize = 12.sp
+                                            fontSize = translationFontSize
                                         ),
-                                        modifier = GlanceModifier.fillMaxWidth()
+                                        modifier = GlanceModifier
+                                            .fillMaxWidth()
+                                            .clickable(actionStartActivity<MainActivity>())
                                     )
                                 }
                             }
