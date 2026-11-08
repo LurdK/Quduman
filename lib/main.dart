@@ -14,21 +14,6 @@ void main() async {
   final savedVerseId = await WidgetService.getSavedVerseIndex();
   final savedEdition = await WidgetService.getSavedEdition();
 
-  // Refresh home screen widget with active verse data on launch
-  final initialVerse = await DatabaseService.instance.getVerseById(savedVerseId) ??
-      await DatabaseService.instance.getVerseById(1);
-  if (initialVerse != null) {
-    final trans = await DatabaseService.instance.getVerseTranslation(
-      initialVerse.id,
-      editionId: savedEdition,
-    );
-    await WidgetService.updateActiveVerse(
-      initialVerse,
-      translation: trans,
-      selectedEdition: savedEdition,
-    );
-  }
-
   // Check if opened from Home Screen Widget
   final launchedFromWidget = await HomeWidget.initiallyLaunchedFromHomeWidget();
 

@@ -24,7 +24,15 @@ class NextVerseActionCallback : ActionCallback {
         WidgetAudioPlayer.stop(context, null)
 
         val prefs = HomeWidgetPlugin.getData(context)
-        val currentIndex = prefs.getInt("current_verse_index", 1)
+        val currentIndex = try {
+            prefs.getInt("current_verse_index", 1)
+        } catch (_: Exception) {
+            try {
+                prefs.getLong("current_verse_index", 1L).toInt()
+            } catch (_: Exception) {
+                1
+            }
+        }
 
         // Global index progression: (current % 6236) + 1
         val nextIndex = (currentIndex % 6236) + 1

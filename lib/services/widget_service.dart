@@ -31,8 +31,13 @@ class WidgetService {
   }
 
   static Future<int> getSavedVerseIndex() async {
-    final index = await HomeWidget.getWidgetData<int>('current_verse_index', defaultValue: 1);
-    return index ?? 1;
+    try {
+      final raw = await HomeWidget.getWidgetData<dynamic>('current_verse_index');
+      if (raw is int) return raw;
+      if (raw is num) return raw.toInt();
+      if (raw is String) return int.tryParse(raw) ?? 1;
+    } catch (_) {}
+    return 1;
   }
 
   static Future<String> getSavedEdition() async {

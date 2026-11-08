@@ -14,7 +14,7 @@ class StartingVerseScreen extends StatefulWidget {
   State<StartingVerseScreen> createState() => _StartingVerseScreenState();
 }
 
-class _StartingVerseScreenState extends State<StartingVerseScreen> {
+class _StartingVerseScreenState extends State<StartingVerseScreen> with WidgetsBindingObserver {
   final DatabaseService _db = DatabaseService.instance;
 
   int _currentIndex = 0;
@@ -29,7 +29,21 @@ class _StartingVerseScreenState extends State<StartingVerseScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadInitialData();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadInitialData();
+    }
   }
 
   Future<void> _loadInitialData() async {
